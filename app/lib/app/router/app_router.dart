@@ -1,6 +1,9 @@
-import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../features/call_history/presentation/screens/call_history_screen.dart';
+import '../../features/home/presentation/screens/home_screen.dart';
+import '../../features/settings/presentation/screens/settings_screen.dart';
+import '../../features/splash/presentation/screens/splash_screen.dart';
 import 'app_routes.dart';
 
 final GoRouter appRouter = GoRouter(
@@ -9,29 +12,22 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       name: AppRoute.splash.name,
       path: AppRoute.splash.path,
-      builder: (_, _) => const _RoutePlaceholder(),
+      builder: (_, _) => const SplashScreen(),
     ),
     GoRoute(
       name: AppRoute.home.name,
       path: AppRoute.home.path,
-      builder: (_, _) => const _RoutePlaceholder(),
+      builder: (_, _) => const HomeScreen(),
     ),
     GoRoute(
       name: AppRoute.callHistory.name,
       path: AppRoute.callHistory.path,
-      builder: (_, _) => const _RoutePlaceholder(),
+      builder: (_, _) => const CallHistoryScreen(),
     ),
     GoRoute(
       name: AppRoute.settings.name,
       path: AppRoute.settings.path,
-      builder: (_, _) => const _RoutePlaceholder(),
+      builder: (_, _) => const SettingsScreen(),
     ),
   ],
 );
-
-class _RoutePlaceholder extends StatelessWidget {
-  const _RoutePlaceholder();
-
-  @override
-  Widget build(BuildContext context) => const SizedBox.shrink();
-}

@@ -1,16 +1,40 @@
-# app
+# CallLoges
 
-A new Flutter project.
+CallLoges is a Flutter app for viewing recent call activity, exploring call history, and accessing app settings.
 
-## Getting Started
+## App structure
 
-This project is a starting point for a Flutter application.
+- `lib/main.dart` — application entrypoint
+- `lib/app/app.dart` — root widget and theme/router setup
+- `lib/app/router/` — route definitions and navigation
+- `lib/features/home/` — home dashboard UI
+- `lib/features/call_history/` — call history screen and data
+- `lib/features/settings/` — settings screen
+- `lib/features/splash/` — splash screen
+- `lib/core/theme/` — theming and Material 3 support
+- `lib/shared/models/` — shared data models
 
-A few resources to get you started if this is your first Flutter project:
+## Run locally
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+From the `app/` folder:
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```bash
+flutter pub get
+flutter run
+```
+
+## Build targets
+
+- Android: `flutter build apk`
+- iOS: `flutter build ios`
+- Web: `flutter build web`
+
+## Dependencies
+
+- `go_router` for application routing
+- `equatable` for model equality
+- `cupertino_icons` for UI icons
+
+## Notes
+
+The current implementation uses hardcoded sample call history data. Extend the app by connecting `call_history` to a platform call log API or remote service.

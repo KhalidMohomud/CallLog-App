@@ -1,0 +1,3 @@
+class ConvexService {
+  const ConvexService();
+}
