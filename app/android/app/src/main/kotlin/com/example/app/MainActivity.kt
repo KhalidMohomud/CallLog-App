@@ -1,27 +1,22 @@
 package com.example.app
 
-import com.example.app.calls.CallChannelHandler
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import com.example.app.calls.CallChannelHandler
 
 class MainActivity : FlutterActivity() {
-    private var callChannelHandler: CallChannelHandler? = null
+
+    private var callHandler: CallChannelHandler? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-
-        callChannelHandler = CallChannelHandler(
-            activity = this,
-            messenger = flutterEngine.dartExecutor.binaryMessenger,
-        ).also { handler ->
-            handler.attach()
-        }
+        callHandler = CallChannelHandler(this, flutterEngine.dartExecutor.binaryMessenger)
+        callHandler?.attach()
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
-        callChannelHandler?.detach()
-        callChannelHandler = null
-
+        callHandler?.detach()
+        callHandler = null
         super.cleanUpFlutterEngine(flutterEngine)
     }
 }

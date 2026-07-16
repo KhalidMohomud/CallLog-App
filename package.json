@@ -1,0 +1,24 @@
+{
+  "name": "callloges",
+  "version": "1.0.0",
+  "description": "Internal company application for Samsung Android business phones. Automatically detects phone calls, saves them locally, and syncs to Convex Cloud.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KhalidMohomud/CallLog-App.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/KhalidMohomud/CallLog-App/issues"
+  },
+  "homepage": "https://github.com/KhalidMohomud/CallLog-App#readme",
+  "dependencies": {
+    "convex": "^1.42.2"
+  }
+}

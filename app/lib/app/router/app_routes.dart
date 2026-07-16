@@ -1,11 +1,8 @@
 enum AppRoute {
-  splash('splash', '/'),
-  home('home', '/home'),
-  callHistory('callHistory', '/call-history'),
-  settings('settings', '/settings');
+  home('home'),
+  callHistory('callHistory'),
+  settings('settings');
 
-  const AppRoute(this.name, this.path);
-
+  const AppRoute(this.name);
   final String name;
-  final String path;
 }

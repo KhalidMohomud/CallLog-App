@@ -2,53 +2,62 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 
-import '../../../shared/models/call_model.dart';
+import '../../../shared/models/call_record.dart';
 
+/// Flutter-side proxy for the Kotlin CallChannelHandler.
+///
+/// Sends "startListening" / "stopListening" method calls to native and
+/// receives "onCallEvent" callbacks which are parsed into [CallRecord] objects.
 class CallChannelService {
-  CallChannelService({MethodChannel? methodChannel})
-    : _methodChannel = methodChannel ?? const MethodChannel(_channelName);
+  CallChannelService({MethodChannel? channel})
+      : _channel = channel ?? const MethodChannel(_channelName);
 
   static const String _channelName = 'com.example.app/calls';
 
-  final MethodChannel _methodChannel;
-  final StreamController<CallModel> _callEventsController =
-      StreamController<CallModel>.broadcast();
+  final MethodChannel _channel;
+  final StreamController<CallRecord> _controller =
+      StreamController<CallRecord>.broadcast();
 
-  MethodChannel get methodChannel => _methodChannel;
-
-  Stream<CallModel> get callEvents => _callEventsController.stream;
+  Stream<CallRecord> get callEvents => _controller.stream;
 
   void initialize() {
-    _methodChannel.setMethodCallHandler(_handleMethodCall);
+    _channel.setMethodCallHandler(_handleNativeCall);
   }
 
-  Future<void> startListening() {
+  Future<void> startListening() async {
     initialize();
-
-    return _methodChannel.invokeMethod<void>('startListening');
+    await _channel.invokeMethod<void>('startListening');
   }
 
-  Future<void> stopListening() {
-    return _methodChannel.invokeMethod<void>('stopListening');
+  Future<void> stopListening() async {
+    await _channel.invokeMethod<void>('stopListening');
   }
 
   Future<void> dispose() async {
     await stopListening();
-    _methodChannel.setMethodCallHandler(null);
-    await _callEventsController.close();
+    _channel.setMethodCallHandler(null);
+    await _controller.close();
   }
 
-  Future<void> _handleMethodCall(MethodCall call) async {
-    if (call.method != 'onCallEvent') {
-      return;
-    }
+  Future<void> _handleNativeCall(MethodCall call) async {
+    if (call.method != 'onCallEvent') return;
+    final args = call.arguments;
+    if (args is! Map) return;
 
-    final Object? arguments = call.arguments;
-    if (arguments is! Map) {
-      return;
-    }
+    final Map<String, dynamic> json = Map<String, dynamic>.from(args);
+    final record = CallRecord(
+      phoneNumber: json['phoneNumber'] as String? ?? '',
+      callType: CallType.fromValue(json['callType'] as String? ?? 'INCOMING'),
+      startTime: DateTime.parse(json['startTime'] as String),
+      endTime: json['endTime'] != null
+          ? DateTime.tryParse(json['endTime'] as String)
+          : null,
+      duration: json['duration'] as int? ?? 0,
+      deviceId: json['deviceId'] as String? ?? '',
+      syncStatus: SyncStatus.pending,
+      createdAt: DateTime.now().toUtc(),
+    );
 
-    final Map<String, dynamic> json = Map<String, dynamic>.from(arguments);
-    _callEventsController.add(CallModel.fromJson(json));
+    _controller.add(record);
   }
 }

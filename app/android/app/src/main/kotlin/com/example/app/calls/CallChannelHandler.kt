@@ -22,12 +22,15 @@ class CallChannelHandler(
     messenger: BinaryMessenger,
 ) : MethodChannel.MethodCallHandler,
     CallBroadcastReceiver.Listener {
+
     private val channel = MethodChannel(messenger, CHANNEL_NAME)
     private val telephonyManager =
         activity.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
 
     private var receiver: CallBroadcastReceiver? = null
     private var isListening = false
+
+    // State tracking to determine callType on IDLE
     private var ringingStartedAtMillis: Long? = null
     private var activeStartedAtMillis: Long? = null
     private var lastPhoneNumber: String? = null
@@ -60,36 +63,42 @@ class CallChannelHandler(
 
         when (state) {
             TelephonyManager.EXTRA_STATE_RINGING -> {
+                // Only incoming calls trigger RINGING
                 ringingStartedAtMillis = now
                 activeStartedAtMillis = null
-                sendCallEvent(
-                    status = STATUS_RINGING,
-                    calledAtMillis = now,
-                    durationSeconds = 0,
-                )
             }
+
             TelephonyManager.EXTRA_STATE_OFFHOOK -> {
-                activeStartedAtMillis = activeStartedAtMillis ?: now
-                sendCallEvent(
-                    status = STATUS_IN_PROGRESS,
-                    calledAtMillis = activeStartedAtMillis ?: now,
-                    durationSeconds = 0,
-                )
+                // OFFHOOK after RINGING  → answered incoming
+                // OFFHOOK without RINGING → outgoing
+                if (activeStartedAtMillis == null) {
+                    activeStartedAtMillis = now
+                }
             }
+
             TelephonyManager.EXTRA_STATE_IDLE -> {
+                // Determine callType from state machine
+                val callType = when {
+                    ringingStartedAtMillis != null && activeStartedAtMillis != null -> CALL_TYPE_INCOMING
+                    ringingStartedAtMillis == null && activeStartedAtMillis != null -> CALL_TYPE_OUTGOING
+                    else -> CALL_TYPE_MISSED   // ringing but never answered
+                }
+
                 val startedAtMillis = activeStartedAtMillis ?: ringingStartedAtMillis ?: now
-                val status = if (activeStartedAtMillis == null && ringingStartedAtMillis != null) {
-                    STATUS_MISSED
+                val duration = if (activeStartedAtMillis != null) {
+                    durationSeconds(activeStartedAtMillis!!, now)
                 } else {
-                    STATUS_COMPLETED
+                    0
                 }
 
                 sendCallEvent(
-                    status = status,
-                    calledAtMillis = startedAtMillis,
-                    durationSeconds = durationSeconds(startedAtMillis, now),
+                    callType = callType,
+                    startTimeMillis = startedAtMillis,
+                    endTimeMillis = now,
+                    durationSeconds = duration,
                 )
 
+                // Reset state
                 ringingStartedAtMillis = null
                 activeStartedAtMillis = null
                 lastPhoneNumber = null
@@ -101,7 +110,7 @@ class CallChannelHandler(
         if (!hasRequiredPermissions()) {
             result.error(
                 ERROR_MISSING_PERMISSION,
-                "READ_PHONE_STATE and READ_CALL_LOG permissions are required for call events.",
+                "READ_PHONE_STATE and READ_CALL_LOG permissions are required.",
                 null,
             )
             return
@@ -125,28 +134,12 @@ class CallChannelHandler(
         receiver = callReceiver
         isListening = true
 
-        @Suppress("DEPRECATION")
-        when (telephonyManager.callState) {
-            TelephonyManager.CALL_STATE_RINGING -> onCallStateChanged(
-                TelephonyManager.EXTRA_STATE_RINGING,
-                lastPhoneNumber,
-            )
-            TelephonyManager.CALL_STATE_OFFHOOK -> onCallStateChanged(
-                TelephonyManager.EXTRA_STATE_OFFHOOK,
-                lastPhoneNumber,
-            )
-        }
-
         result.success(null)
     }
 
     private fun stopListening() {
         val callReceiver = receiver ?: return
-
-        runCatching {
-            activity.unregisterReceiver(callReceiver)
-        }
-
+        runCatching { activity.unregisterReceiver(callReceiver) }
         receiver = null
         isListening = false
         ringingStartedAtMillis = null
@@ -155,14 +148,16 @@ class CallChannelHandler(
     }
 
     private fun sendCallEvent(
-        status: String,
-        calledAtMillis: Long,
+        callType: String,
+        startTimeMillis: Long,
+        endTimeMillis: Long,
         durationSeconds: Int,
     ) {
         val payload = mapOf(
             "phoneNumber" to lastPhoneNumber.orEmpty(),
-            "calledAt" to calledAtMillis.toIso8601String(),
-            "status" to status,
+            "callType" to callType,
+            "startTime" to startTimeMillis.toIso8601String(),
+            "endTime" to endTimeMillis.toIso8601String(),
             "duration" to durationSeconds,
             "deviceId" to deviceId(),
         )
@@ -204,10 +199,9 @@ class CallChannelHandler(
         const val METHOD_ON_CALL_EVENT = "onCallEvent"
         const val ERROR_MISSING_PERMISSION = "missing_permission"
 
-        const val STATUS_RINGING = "Ringing"
-        const val STATUS_IN_PROGRESS = "In Progress"
-        const val STATUS_COMPLETED = "Completed"
-        const val STATUS_MISSED = "Missed"
+        const val CALL_TYPE_INCOMING = "INCOMING"
+        const val CALL_TYPE_OUTGOING = "OUTGOING"
+        const val CALL_TYPE_MISSED = "MISSED"
 
         val iso8601Formatter: ThreadLocal<SimpleDateFormat> = ThreadLocal.withInitial {
             SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {

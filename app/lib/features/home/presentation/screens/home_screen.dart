@@ -2,41 +2,68 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../app/router/app_routes.dart';
-import '../../../../shared/models/call_model.dart';
+import '../../../../shared/models/call_record.dart';
+import '../viewmodels/home_viewmodel.dart';
 
-final List<CallModel> _latestCalls = <CallModel>[
-  CallModel(
-    phoneNumber: '+252 61 234 5678',
-    calledAt: DateTime(2026, 6, 29, 9, 24),
-    status: 'Incoming',
-    duration: 84,
-    deviceId: 'android-primary',
-  ),
-  CallModel(
-    phoneNumber: '+252 63 987 1200',
-    calledAt: DateTime(2026, 6, 29, 11, 8),
-    status: 'Missed',
-    duration: 0,
-    deviceId: 'android-primary',
-  ),
-  CallModel(
-    phoneNumber: '+252 65 456 9012',
-    calledAt: DateTime(2026, 6, 29, 14, 42),
-    status: 'Outgoing',
-    duration: 221,
-    deviceId: 'android-primary',
-  ),
-];
-
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  late final HomeViewModel _vm;
+
+  @override
+  void initState() {
+    super.initState();
+    _vm = HomeViewModel();
+  }
+
+  @override
+  void dispose() {
+    _vm.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: _vm,
+      builder: (context, _) => _HomeView(vm: _vm),
+    );
+  }
+}
+
+class _HomeView extends StatelessWidget {
+  const _HomeView({required this.vm});
+
+  final HomeViewModel vm;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Home'),
-        actions: <Widget>[
+        title: const Text('Beecbile Call Tracker'),
+        actions: [
+          if (vm.isSyncing)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          IconButton(
+            tooltip: 'Sync now',
+            onPressed: vm.isSyncing ? null : vm.syncNow,
+            icon: const Icon(Icons.sync_outlined),
+          ),
           IconButton(
             tooltip: 'Settings',
             onPressed: () => context.goNamed(AppRoute.settings.name),
@@ -46,70 +73,153 @@ class HomeScreen extends StatelessWidget {
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
-        children: <Widget>[
+        children: [
+          // ── Status banner ─────────────────────────────────────────────────
+          _StatusBanner(
+            serviceActive: vm.serviceActive,
+            isConnected: vm.isConnected,
+            lastSyncTime: vm.lastSyncTime,
+          ),
+          const SizedBox(height: 16),
+
+          // ── Metric cards ──────────────────────────────────────────────────
           Row(
-            children: <Widget>[
+            children: [
               Expanded(
                 child: _MetricCard(
-                  title: "Today's Calls",
-                  value: '${_latestCalls.length}',
-                  icon: Icons.today_outlined,
+                  icon: Icons.phone_in_talk_outlined,
+                  label: 'Registered Calls',
+                  value: '${vm.totalCallCount}',
                 ),
               ),
               const SizedBox(width: 12),
-              const Expanded(
+              Expanded(
                 child: _MetricCard(
-                  title: 'Total Calls',
-                  value: '128',
-                  icon: Icons.phone_in_talk_outlined,
+                  icon: vm.isConnected
+                      ? Icons.cloud_done_outlined
+                      : Icons.cloud_off_outlined,
+                  label: 'Internet',
+                  value: vm.isConnected ? 'Connected' : 'Offline',
                 ),
               ),
             ],
           ),
           const SizedBox(height: 24),
-          Text('Latest Calls', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 12),
-          for (final CallModel call in _latestCalls) ...<Widget>[
-            _CallCard(call: call),
-            const SizedBox(height: 12),
+
+          // ── Error message ─────────────────────────────────────────────────
+          if (vm.errorMessage != null) ...[
+            _ErrorBanner(message: vm.errorMessage!),
+            const SizedBox(height: 16),
           ],
+
+          // ── Recent calls list ─────────────────────────────────────────────
+          Text('Recent Calls', style: theme.textTheme.titleLarge),
+          const SizedBox(height: 12),
+          if (vm.recentCalls.isEmpty)
+            const _EmptyCallsPlaceholder()
+          else
+            for (final call in vm.recentCalls.take(20)) ...[
+              _CallCard(record: call),
+              const SizedBox(height: 8),
+            ],
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        tooltip: 'Call History',
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.goNamed(AppRoute.callHistory.name),
-        child: const Icon(Icons.history_outlined),
+        icon: const Icon(Icons.history_outlined),
+        label: const Text('Full History'),
       ),
     );
   }
 }
 
-class _MetricCard extends StatelessWidget {
-  const _MetricCard({
-    required this.title,
-    required this.value,
-    required this.icon,
+// ─── Status banner ──────────────────────────────────────────────────────────
+
+class _StatusBanner extends StatelessWidget {
+  const _StatusBanner({
+    required this.serviceActive,
+    required this.isConnected,
+    required this.lastSyncTime,
   });
 
-  final String title;
-  final String value;
-  final IconData icon;
+  final bool serviceActive;
+  final bool isConnected;
+  final DateTime? lastSyncTime;
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    final colors = Theme.of(context).colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.primaryContainer,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  serviceActive ? Icons.check_circle : Icons.cancel,
+                  color: serviceActive ? const Color(0xFF2E7D32) : colors.error,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Status: ${serviceActive ? 'ACTIVE' : 'INACTIVE'}',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        color: colors.onPrimaryContainer,
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+              ],
+            ),
+            if (lastSyncTime != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Last Sync: ${_formatTime(lastSyncTime!)}',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: colors.onPrimaryContainer,
+                    ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Metric card ─────────────────────────────────────────────────────────────
+
+class _MetricCard extends StatelessWidget {
+  const _MetricCard({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
 
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Icon(icon, color: colorScheme.primary),
-            const SizedBox(height: 18),
+          children: [
+            Icon(icon, color: colors.primary),
+            const SizedBox(height: 12),
             Text(value, style: Theme.of(context).textTheme.headlineMedium),
             const SizedBox(height: 4),
-            Text(title, style: Theme.of(context).textTheme.bodyMedium),
+            Text(label, style: Theme.of(context).textTheme.bodySmall),
           ],
         ),
       ),
@@ -117,70 +227,169 @@ class _MetricCard extends StatelessWidget {
   }
 }
 
-class _CallCard extends StatelessWidget {
-  const _CallCard({required this.call});
+// ─── Call card ───────────────────────────────────────────────────────────────
 
-  final CallModel call;
+class _CallCard extends StatelessWidget {
+  const _CallCard({required this.record});
+
+  final CallRecord record;
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    final colors = Theme.of(context).colorScheme;
 
     return Card(
       child: ListTile(
         leading: CircleAvatar(
-          backgroundColor: colorScheme.primaryContainer,
-          foregroundColor: colorScheme.onPrimaryContainer,
-          child: const Icon(Icons.call_outlined),
+          backgroundColor: _bgColor(colors),
+          foregroundColor: colors.surface,
+          child: Icon(_icon()),
         ),
-        title: Text(call.phoneNumber),
-        subtitle: Text(
-          '${_formatDate(call.calledAt)}  ${_formatTime(call.calledAt)}',
+        title: Text(
+          record.phoneNumber.isEmpty ? 'Unknown' : record.phoneNumber,
         ),
-        trailing: _StatusPill(status: call.status),
+        subtitle: Text(_formatTime(record.startTime)),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            _TypeChip(callType: record.callType),
+            const SizedBox(height: 4),
+            _SyncDot(status: record.syncStatus),
+          ],
+        ),
       ),
     );
   }
+
+  IconData _icon() {
+    return switch (record.callType) {
+      CallType.incoming => Icons.call_received,
+      CallType.outgoing => Icons.call_made,
+      CallType.missed => Icons.call_missed,
+    };
+  }
+
+  Color _bgColor(ColorScheme c) {
+    return switch (record.callType) {
+      CallType.incoming => const Color(0xFF2E7D32),
+      CallType.outgoing => c.primary,
+      CallType.missed => c.error,
+    };
+  }
 }
 
-class _StatusPill extends StatelessWidget {
-  const _StatusPill({required this.status});
+class _TypeChip extends StatelessWidget {
+  const _TypeChip({required this.callType});
 
-  final String status;
+  final CallType callType;
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme colorScheme = Theme.of(context).colorScheme;
-
+    final colors = Theme.of(context).colorScheme;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: colorScheme.secondaryContainer,
+        color: colors.secondaryContainer,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         child: Text(
-          status,
-          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-            color: colorScheme.onSecondaryContainer,
-          ),
+          callType.value,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: colors.onSecondaryContainer,
+              ),
         ),
       ),
     );
   }
 }
 
-String _formatDate(DateTime value) {
-  final String day = value.day.toString().padLeft(2, '0');
-  final String month = value.month.toString().padLeft(2, '0');
+class _SyncDot extends StatelessWidget {
+  const _SyncDot({required this.status});
 
-  return '$month/$day/${value.year}';
+  final SyncStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = switch (status) {
+      SyncStatus.synced => const Color(0xFF2E7D32),
+      SyncStatus.failed => Theme.of(context).colorScheme.error,
+      SyncStatus.pending => Colors.orange,
+    };
+    final label = switch (status) {
+      SyncStatus.synced => 'Synced',
+      SyncStatus.failed => 'Failed',
+      SyncStatus.pending => 'Pending',
+    };
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.circle, size: 8, color: color),
+        const SizedBox(width: 4),
+        Text(label, style: Theme.of(context).textTheme.labelSmall),
+      ],
+    );
+  }
 }
 
-String _formatTime(DateTime value) {
-  final int hour = value.hour % 12 == 0 ? 12 : value.hour % 12;
-  final String minute = value.minute.toString().padLeft(2, '0');
-  final String period = value.hour >= 12 ? 'PM' : 'AM';
+class _EmptyCallsPlaceholder extends StatelessWidget {
+  const _EmptyCallsPlaceholder();
 
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 40),
+      child: Column(
+        children: [
+          Icon(
+            Icons.phone_missed_outlined,
+            size: 56,
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'No calls recorded yet.',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ErrorBanner extends StatelessWidget {
+  const _ErrorBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.errorContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Text(
+          message,
+          style: TextStyle(color: colors.onErrorContainer),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+String _formatTime(DateTime value) {
+  final local = value.toLocal();
+  final hour = local.hour % 12 == 0 ? 12 : local.hour % 12;
+  final minute = local.minute.toString().padLeft(2, '0');
+  final period = local.hour >= 12 ? 'PM' : 'AM';
   return '$hour:$minute $period';
 }

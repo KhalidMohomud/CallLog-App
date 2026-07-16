@@ -3,13 +3,13 @@ import 'package:flutter/material.dart';
 import '../core/theme/app_theme.dart';
 import 'router/app_router.dart';
 
-class CallLogesApp extends StatelessWidget {
-  const CallLogesApp({super.key});
+class BeecbileApp extends StatelessWidget {
+  const BeecbileApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp.router(
-      title: 'Call Loges',
+      title: 'Beecbile Call Tracker',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,

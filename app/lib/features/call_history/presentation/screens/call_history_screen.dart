@@ -1,135 +1,142 @@
 import 'package:flutter/material.dart';
 
-import '../../../../shared/models/call_model.dart';
+import '../../../../core/di/dependency_injection.dart';
+import '../../../../shared/models/call_record.dart';
 
-final List<CallModel> _callHistory = <CallModel>[
-  CallModel(
-    phoneNumber: '+252 61 234 5678',
-    calledAt: DateTime(2026, 6, 29, 9, 24),
-    status: 'Incoming',
-    duration: 84,
-    deviceId: 'android-primary',
-  ),
-  CallModel(
-    phoneNumber: '+252 63 987 1200',
-    calledAt: DateTime(2026, 6, 29, 11, 8),
-    status: 'Missed',
-    duration: 0,
-    deviceId: 'android-primary',
-  ),
-  CallModel(
-    phoneNumber: '+252 65 456 9012',
-    calledAt: DateTime(2026, 6, 29, 14, 42),
-    status: 'Outgoing',
-    duration: 221,
-    deviceId: 'android-primary',
-  ),
-  CallModel(
-    phoneNumber: '+252 68 771 4400',
-    calledAt: DateTime(2026, 6, 28, 18, 6),
-    status: 'Incoming',
-    duration: 132,
-    deviceId: 'android-primary',
-  ),
-];
-
-class CallHistoryScreen extends StatelessWidget {
+class CallHistoryScreen extends StatefulWidget {
   const CallHistoryScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+  State<CallHistoryScreen> createState() => _CallHistoryScreenState();
+}
 
+class _CallHistoryScreenState extends State<CallHistoryScreen> {
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Call History')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-        children: <Widget>[
-          DecoratedBox(
-            decoration: BoxDecoration(
-              color: colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(18),
-              child: Row(
-                children: <Widget>[
-                  Icon(
-                    Icons.history_outlined,
-                    color: colorScheme.onPrimaryContainer,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      '${_callHistory.length} recent calls',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: colorScheme.onPrimaryContainer,
-                      ),
-                    ),
-                  ),
-                ],
+      body: StreamBuilder<List<CallRecord>>(
+        stream: DI.instance.callRepository.watchAllCalls(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          final calls = snapshot.data ?? const [];
+
+          if (calls.isEmpty) {
+            return const Center(
+              child: Text('No call records stored yet.'),
+            );
+          }
+
+          return Column(
+            children: [
+              _CountBanner(count: calls.length),
+              Expanded(
+                child: ListView.separated(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                  itemCount: calls.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) =>
+                      _CallHistoryCard(record: calls[index]),
+                ),
               ),
-            ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _CountBanner extends StatelessWidget {
+  const _CountBanner({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: colors.primaryContainer,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              Icon(Icons.history_outlined, color: colors.onPrimaryContainer),
+              const SizedBox(width: 12),
+              Text(
+                '$count stored calls',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: colors.onPrimaryContainer,
+                    ),
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
-          for (final CallModel call in _callHistory) ...<Widget>[
-            _CallHistoryCard(call: call),
-            const SizedBox(height: 12),
-          ],
-        ],
+        ),
       ),
     );
   }
 }
 
 class _CallHistoryCard extends StatelessWidget {
-  const _CallHistoryCard({required this.call});
+  const _CallHistoryCard({required this.record});
 
-  final CallModel call;
+  final CallRecord record;
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme colorScheme = Theme.of(context).colorScheme;
+    final colors = Theme.of(context).colorScheme;
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                CircleAvatar(
-                  backgroundColor: colorScheme.tertiaryContainer,
-                  foregroundColor: colorScheme.onTertiaryContainer,
-                  child: const Icon(Icons.phone_outlined),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Text(
-                    call.phoneNumber,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-                _StatusChip(status: call.status),
-              ],
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            CircleAvatar(
+              backgroundColor: _avatarColor(colors),
+              foregroundColor: colors.surface,
+              child: Icon(_icon()),
             ),
-            const SizedBox(height: 16),
-            Row(
-              children: <Widget>[
-                Expanded(
-                  child: _CallMetaItem(
-                    label: 'Date',
-                    value: _formatDate(call.calledAt),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    record.phoneNumber.isEmpty ? 'Unknown' : record.phoneNumber,
+                    style: Theme.of(context).textTheme.titleSmall,
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _CallMetaItem(
-                    label: 'Time',
-                    value: _formatTime(call.calledAt),
+                  const SizedBox(height: 2),
+                  Text(
+                    _formatDateTime(record.startTime),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
                   ),
-                ),
+                  if (record.callType != CallType.missed) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      _formatDuration(record.duration),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                _TypeBadge(callType: record.callType),
+                const SizedBox(height: 4),
+                _SyncBadge(status: record.syncStatus),
               ],
             ),
           ],
@@ -137,82 +144,76 @@ class _CallHistoryCard extends StatelessWidget {
       ),
     );
   }
+
+  IconData _icon() => switch (record.callType) {
+        CallType.incoming => Icons.call_received,
+        CallType.outgoing => Icons.call_made,
+        CallType.missed => Icons.call_missed,
+      };
+
+  Color _avatarColor(ColorScheme c) => switch (record.callType) {
+        CallType.incoming => const Color(0xFF2E7D32),
+        CallType.outgoing => c.primary,
+        CallType.missed => c.error,
+      };
 }
 
-class _StatusChip extends StatelessWidget {
-  const _StatusChip({required this.status});
+class _TypeBadge extends StatelessWidget {
+  const _TypeBadge({required this.callType});
 
-  final String status;
+  final CallType callType;
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme colorScheme = Theme.of(context).colorScheme;
-
+    final colors = Theme.of(context).colorScheme;
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: colorScheme.secondaryContainer,
+        color: colors.secondaryContainer,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         child: Text(
-          status,
-          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-            color: colorScheme.onSecondaryContainer,
-          ),
+          callType.value,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: colors.onSecondaryContainer,
+              ),
         ),
       ),
     );
   }
 }
 
-class _CallMetaItem extends StatelessWidget {
-  const _CallMetaItem({required this.label, required this.value});
+class _SyncBadge extends StatelessWidget {
+  const _SyncBadge({required this.status});
 
-  final String label;
-  final String value;
+  final SyncStatus status;
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme colorScheme = Theme.of(context).colorScheme;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(
-              label,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 3),
-            Text(value, style: Theme.of(context).textTheme.bodyMedium),
-          ],
-        ),
-      ),
+    final color = switch (status) {
+      SyncStatus.synced => const Color(0xFF2E7D32),
+      SyncStatus.failed => Theme.of(context).colorScheme.error,
+      SyncStatus.pending => Colors.orange,
+    };
+    return Text(
+      status.value,
+      style: Theme.of(context).textTheme.labelSmall?.copyWith(color: color),
     );
   }
 }
 
-String _formatDate(DateTime value) {
-  final String day = value.day.toString().padLeft(2, '0');
-  final String month = value.month.toString().padLeft(2, '0');
-
-  return '$month/$day/${value.year}';
+String _formatDateTime(DateTime dt) {
+  final l = dt.toLocal();
+  final h = l.hour % 12 == 0 ? 12 : l.hour % 12;
+  final m = l.minute.toString().padLeft(2, '0');
+  final p = l.hour >= 12 ? 'PM' : 'AM';
+  return '${l.month}/${l.day}/${l.year}  $h:$m $p';
 }
 
-String _formatTime(DateTime value) {
-  final int hour = value.hour % 12 == 0 ? 12 : value.hour % 12;
-  final String minute = value.minute.toString().padLeft(2, '0');
-  final String period = value.hour >= 12 ? 'PM' : 'AM';
-
-  return '$hour:$minute $period';
+String _formatDuration(int seconds) {
+  if (seconds < 60) return '${seconds}s';
+  final m = seconds ~/ 60;
+  final s = seconds % 60;
+  return '${m}m ${s}s';
 }
